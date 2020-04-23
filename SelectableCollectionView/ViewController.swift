@@ -12,7 +12,8 @@ import SnapKit
 
 final class ViewController: UIViewController {
     @IBOutlet private var collectionView: UICollectionView!
-//    private var collectionView: UICollectionView!
+    
+    private let vm = ViewModel()
 
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -28,12 +29,67 @@ final class ViewController: UIViewController {
         
         collectionView.collectionViewLayout = layout
         collectionView.backgroundColor = .lightGray
+        collectionView.contentInset = .init(top: 1, left: 0, bottom: 1, right: 0)
+        
+        collectionView.dragInteractionEnabled = true
+        collectionView.dragDelegate = self
+        collectionView.dropDelegate = self
+        
         collectionView.delegate = self
         collectionView.dataSource = self
-        collectionView.register(UICollectionViewCell.self, forCellWithReuseIdentifier: "cell")
+        collectionView.register(AlphabetCollectionViewCell.self, forCellWithReuseIdentifier: AlphabetCollectionViewCell.id)
+    }
+}
+
+extension ViewController: UICollectionViewDragDelegate, UICollectionViewDropDelegate {
+    func collectionView(_ collectionView: UICollectionView, itemsForBeginning session: UIDragSession, at indexPath: IndexPath) -> [UIDragItem] {
+        guard indexPath.section == 0 else { return [] }
+        let item = String(vm.selectedItems[indexPath.row])
+        let provider = NSItemProvider(object: item as NSString)
+        let dragItem = UIDragItem(itemProvider: provider)
+        return [dragItem]
     }
     
-    let vm = ViewModel()
+    func collectionView(_ collectionView: UICollectionView, dropSessionDidUpdate session: UIDropSession, withDestinationIndexPath destinationIndexPath: IndexPath?) -> UICollectionViewDropProposal {
+        return collectionView.hasActiveDrag
+            ? UICollectionViewDropProposal(operation: .move, intent: .insertAtDestinationIndexPath)
+            : UICollectionViewDropProposal(operation: .cancel)
+    }
+
+    func collectionView(_ collectionView: UICollectionView, performDropWith coordinator: UICollectionViewDropCoordinator) {
+        guard let item = coordinator.items.first else { return }
+        let sourceIndexPath = item.sourceIndexPath!
+        let destinationIndexPath: IndexPath
+        
+        if let indexPath = coordinator.destinationIndexPath {
+            destinationIndexPath = indexPath
+        } else {
+            destinationIndexPath = IndexPath(
+                item: collectionView.numberOfItems(inSection: 0),
+                section: 0)
+        }
+        
+        switch coordinator.proposal.operation {
+        case .move:
+            collectionView.performBatchUpdates({
+                move(at: sourceIndexPath.row, to: destinationIndexPath.row)
+                collectionView.deleteItems(at: [sourceIndexPath])
+                collectionView.insertItems(at: [destinationIndexPath])
+            }, completion: nil)
+            coordinator.drop(item.dragItem, toItemAt: destinationIndexPath)
+            
+        default:
+            ()
+        }
+        
+    }
+        
+    private func move(at sourceIndex: Int, to destinationIndex: Int) {
+        guard sourceIndex != destinationIndex else { return }
+        let item = vm.selectedItems[sourceIndex]
+        vm.selectedItems.remove(at: sourceIndex)
+        vm.selectedItems.insert(item, at: destinationIndex)
+    }
 }
 
 extension ViewController: UICollectionViewDelegateFlowLayout {
@@ -59,8 +115,11 @@ extension ViewController: UICollectionViewDelegate, UICollectionViewDataSource {
     }
     
     func collectionView(_ collectionView: UICollectionView, cellForItemAt indexPath: IndexPath) -> UICollectionViewCell {
-        let cell = collectionView.dequeueReusableCell(withReuseIdentifier: "cell", for: indexPath)
-        cell.backgroundColor = .white
+        guard let cell = collectionView.dequeueReusableCell(withReuseIdentifier: AlphabetCollectionViewCell.id, for: indexPath) as? AlphabetCollectionViewCell else { return .init() }
+        let title = indexPath.section == 0
+            ? String(vm.selectedItems[indexPath.row])
+            : String(vm.items[indexPath.row])
+        cell.configure(.init(title: title))
         return cell
     }
 }
@@ -71,10 +130,40 @@ final class ViewModel {
         return section == 0 ? 6 : items.count
     }
     
-    var selectedItems: [Int] = []
+    var selectedItems: [Int] = [5,4,3,2,1,0]
     var items: [Int] = [0,1,2,3,4,5,6,7,8,9]
 }
 
 final class SectionHeaderView: UICollectionReusableView {
     static let id = "SectionHeaderView"
+}
+
+final class AlphabetCollectionViewCell: UICollectionViewCell {
+    static let id = "AlphabetCollectionViewCell"
+    
+    private let titleLabel = UILabel(frame: .zero)
+    
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        setupView()
+    }
+    required init?(coder aDecoder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+    
+    private func setupView() {
+        backgroundColor = .white
+        titleLabel.textAlignment = .center
+        
+        contentView.addSubview(titleLabel)
+        titleLabel.snp.makeConstraints { $0.edges.equalToSuperview() }
+    }
+    
+    func configure(_ vm: ViewModel) {
+        titleLabel.text = vm.title
+    }
+
+    struct ViewModel {
+        var title: String
+    }
 }
