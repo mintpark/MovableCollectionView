@@ -43,8 +43,10 @@ final class ViewController: UIViewController {
 
 extension ViewController: UICollectionViewDragDelegate, UICollectionViewDropDelegate {
     func collectionView(_ collectionView: UICollectionView, itemsForBeginning session: UIDragSession, at indexPath: IndexPath) -> [UIDragItem] {
-        guard indexPath.section == 0 else { return [] }
-        let item = String(vm.selectedItems[indexPath.row])
+        guard indexPath.section == 0,
+            indexPath.row < vm.selectedItems.count else { return [] }
+        
+        let item = vm.selectedItems[indexPath.row]
         let provider = NSItemProvider(object: item as NSString)
         let dragItem = UIDragItem(itemProvider: provider)
         return [dragItem]
@@ -116,11 +118,17 @@ extension ViewController: UICollectionViewDelegate, UICollectionViewDataSource {
     
     func collectionView(_ collectionView: UICollectionView, cellForItemAt indexPath: IndexPath) -> UICollectionViewCell {
         guard let cell = collectionView.dequeueReusableCell(withReuseIdentifier: AlphabetCollectionViewCell.id, for: indexPath) as? AlphabetCollectionViewCell else { return .init() }
-        let title = indexPath.section == 0
-            ? String(vm.selectedItems[indexPath.row])
-            : String(vm.items[indexPath.row])
-        cell.configure(.init(title: title))
+        let title = vm.title(at: indexPath)
+        let order = vm.order(at: indexPath)
+        
+        cell.configure(.init(title: title, order: order))
         return cell
+    }
+    
+    func collectionView(_ collectionView: UICollectionView, didSelectItemAt indexPath: IndexPath) {
+        guard indexPath.section == 1 else { return }
+        vm.updateStackState(at: indexPath)
+        collectionView.reloadData()
     }
 }
 
@@ -130,8 +138,34 @@ final class ViewModel {
         return section == 0 ? 6 : items.count
     }
     
-    var selectedItems: [Int] = [5,4,3,2,1,0]
-    var items: [Int] = [0,1,2,3,4,5,6,7,8,9]
+    var items: [String] = ["A","B","C","D","E","F","G"]
+    var selectedItems: [String] = []
+    
+    func title(at indexPath: IndexPath) -> String {
+        if indexPath.section == 0 {
+            return indexPath.row < selectedItems.count ? selectedItems[indexPath.row] : ""
+        } else {
+            return items[indexPath.row]
+        }
+    }
+    
+    func order(at indexPath: IndexPath) -> Int? {
+        let order: Int? = {
+            switch indexPath.section {
+            case 1: return selectedItems.enumerated().filter { $0.element == items[indexPath.row] }.first?.offset
+            default: return nil
+            }
+        }()
+        return order
+    }
+    
+    func updateStackState(at indexPath: IndexPath) {
+        let item = items[indexPath.row]
+        let selectedIndex = selectedItems.enumerated().filter { $0.element == item }.first?.offset ?? 0
+        selectedItems.contains(item)
+            ? selectedItems.removeSubrange(selectedIndex...selectedIndex)
+            : selectedItems.append(item)
+    }
 }
 
 final class SectionHeaderView: UICollectionReusableView {
@@ -142,6 +176,7 @@ final class AlphabetCollectionViewCell: UICollectionViewCell {
     static let id = "AlphabetCollectionViewCell"
     
     private let titleLabel = UILabel(frame: .zero)
+    private let orderLabel = UILabel(frame: .zero)
     
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -154,16 +189,30 @@ final class AlphabetCollectionViewCell: UICollectionViewCell {
     private func setupView() {
         backgroundColor = .white
         titleLabel.textAlignment = .center
+        orderLabel.textAlignment = .center
+        orderLabel.isHidden = true
+        orderLabel.backgroundColor = .black
+        orderLabel.textColor = .white
+        orderLabel.layer.cornerRadius = 20
         
         contentView.addSubview(titleLabel)
+        contentView.addSubview(orderLabel)
+        
         titleLabel.snp.makeConstraints { $0.edges.equalToSuperview() }
+        orderLabel.snp.makeConstraints { (make) in
+            make.width.height.equalTo(40)
+            make.top.trailing.equalToSuperview()
+        }
     }
     
     func configure(_ vm: ViewModel) {
         titleLabel.text = vm.title
+        orderLabel.text = String(vm.order ?? 0)
+        orderLabel.isHidden = vm.order == nil
     }
 
     struct ViewModel {
         var title: String
+        var order: Int?
     }
 }
