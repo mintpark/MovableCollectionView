@@ -26,10 +26,12 @@ final class ViewController: UIViewController {
         layout.itemSize = .init(width: length, height: length)
         layout.minimumLineSpacing = 1
         layout.minimumInteritemSpacing = 1
+        layout.sectionHeadersPinToVisibleBounds = true
         
         collectionView.collectionViewLayout = layout
         collectionView.backgroundColor = .lightGray
         collectionView.contentInset = .init(top: 1, left: 0, bottom: 1, right: 0)
+        collectionView.alwaysBounceVertical = false
         
         collectionView.dragInteractionEnabled = true
         collectionView.dragDelegate = self
@@ -77,7 +79,9 @@ extension ViewController: UICollectionViewDragDelegate, UICollectionViewDropDele
                 move(at: sourceIndexPath.row, to: destinationIndexPath.row)
                 collectionView.deleteItems(at: [sourceIndexPath])
                 collectionView.insertItems(at: [destinationIndexPath])
-            }, completion: nil)
+            }, completion: { _ in
+                collectionView.reloadSections(.init(integer: 1))
+            })
             coordinator.drop(item.dragItem, toItemAt: destinationIndexPath)
             
         default:
@@ -127,6 +131,15 @@ extension ViewController: UICollectionViewDelegate, UICollectionViewDataSource {
     
     func collectionView(_ collectionView: UICollectionView, didSelectItemAt indexPath: IndexPath) {
         guard indexPath.section == 1 else { return }
+        
+        guard vm.isSelectable(at: indexPath) else {
+            let ok = UIAlertAction(title: "확인", style: .default, handler: nil)
+            let alert = UIAlertController(title: "선택 가능한 아이템은 최대 6개입니다", message: nil, preferredStyle: .alert)
+            alert.addAction(ok)
+            present(alert, animated: true, completion: nil)
+            return
+        }
+        
         vm.updateStackState(at: indexPath)
         collectionView.reloadData()
     }
@@ -138,8 +151,9 @@ final class ViewModel {
         return section == 0 ? 6 : items.count
     }
     
-    var items: [String] = ["A","B","C","D","E","F","G"]
+    var items: [String] = ["A","B","C","D","E","F","G","H","I","J","K","L","M","N","O","P","Q","R","S","T","U","V","W","X","Y","Z"]
     var selectedItems: [String] = []
+    let maxSize = 6
     
     func title(at indexPath: IndexPath) -> String {
         if indexPath.section == 0 {
@@ -166,6 +180,10 @@ final class ViewModel {
             ? selectedItems.removeSubrange(selectedIndex...selectedIndex)
             : selectedItems.append(item)
     }
+    
+    func isSelectable(at indexPath: IndexPath) -> Bool {
+        return maxSize > selectedItems.count || selectedItems.contains(items[indexPath.row])
+    }
 }
 
 final class SectionHeaderView: UICollectionReusableView {
@@ -191,23 +209,28 @@ final class AlphabetCollectionViewCell: UICollectionViewCell {
         titleLabel.textAlignment = .center
         orderLabel.textAlignment = .center
         orderLabel.isHidden = true
+        orderLabel.clipsToBounds = true
         orderLabel.backgroundColor = .black
         orderLabel.textColor = .white
-        orderLabel.layer.cornerRadius = 20
         
         contentView.addSubview(titleLabel)
         contentView.addSubview(orderLabel)
         
         titleLabel.snp.makeConstraints { $0.edges.equalToSuperview() }
         orderLabel.snp.makeConstraints { (make) in
-            make.width.height.equalTo(40)
-            make.top.trailing.equalToSuperview()
+            make.width.height.equalTo(24)
+            make.top.trailing.equalToSuperview().inset(2)
         }
+    }
+    
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        orderLabel.layer.cornerRadius = 12
     }
     
     func configure(_ vm: ViewModel) {
         titleLabel.text = vm.title
-        orderLabel.text = String(vm.order ?? 0)
+        orderLabel.text = String(1+(vm.order ?? 0))
         orderLabel.isHidden = vm.order == nil
     }
 
