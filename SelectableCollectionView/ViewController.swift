@@ -13,6 +13,7 @@ import SnapKit
 final class ViewController: UIViewController {
     @IBOutlet private var collectionView: UICollectionView!
     
+    private let gesture = UIPanGestureRecognizer()
     private let vm = ViewModel()
 
     override func viewDidLoad() {
@@ -40,6 +41,23 @@ final class ViewController: UIViewController {
         collectionView.delegate = self
         collectionView.dataSource = self
         collectionView.register(AlphabetCollectionViewCell.self, forCellWithReuseIdentifier: AlphabetCollectionViewCell.id)
+    }
+}
+
+extension ViewController: SectionHeaderViewDelegate {
+    
+    func headerViewHide() {
+        collectionView.scrollToSupplementaryView(ofKind: UICollectionView.elementKindSectionHeader, at: .init(row: 0, section: 1), at: .top, animated: true)
+    }
+    
+    func headerViewShow() {
+        collectionView.scrollToItem(at: .init(row: 0, section: 0), at: .top, animated: true)
+    }
+    
+    func headerViewClear() {
+        vm.clear()
+        collectionView.reloadData()
+        headerViewShow()
     }
 }
 
@@ -93,8 +111,8 @@ extension ViewController: UICollectionViewDragDelegate, UICollectionViewDropDele
     private func move(at sourceIndex: Int, to destinationIndex: Int) {
         guard sourceIndex != destinationIndex else { return }
         let item = vm.selectedItems[sourceIndex]
-        vm.selectedItems.remove(at: sourceIndex)
-        vm.selectedItems.insert(item, at: destinationIndex)
+        vm.removeOrdered(at: sourceIndex)
+        vm.insertOrdered(item, at: destinationIndex)
     }
 }
 
@@ -102,7 +120,13 @@ extension ViewController: UICollectionViewDelegateFlowLayout {
     func collectionView(_ collectionView: UICollectionView, layout collectionViewLayout: UICollectionViewLayout, referenceSizeForHeaderInSection section: Int) -> CGSize {
         return section == 0
             ? .init(width: UIScreen.main.bounds.width, height: CGFloat.leastNonzeroMagnitude)
-            : .init(width: UIScreen.main.bounds.width, height: 88)
+            : .init(width: UIScreen.main.bounds.width, height: 44)
+    }
+    
+    func collectionView(_ collectionView: UICollectionView, layout collectionViewLayout: UICollectionViewLayout, referenceSizeForFooterInSection section: Int) -> CGSize {
+        return section == 0
+            ? .init(width: UIScreen.main.bounds.width, height: 44)
+            : .init(width: UIScreen.main.bounds.width, height: CGFloat.leastNonzeroMagnitude)
     }
 }
 
@@ -116,8 +140,21 @@ extension ViewController: UICollectionViewDelegate, UICollectionViewDataSource {
     }
     
     func collectionView(_ collectionView: UICollectionView, viewForSupplementaryElementOfKind kind: String, at indexPath: IndexPath) -> UICollectionReusableView {
-        guard let header = collectionView.dequeueReusableSupplementaryView(ofKind: kind, withReuseIdentifier: SectionHeaderView.id, for: indexPath) as? SectionHeaderView else { return .init() }
-        return header
+        
+        switch kind {
+        case UICollectionView.elementKindSectionHeader:
+            guard let header = collectionView.dequeueReusableSupplementaryView(ofKind: kind, withReuseIdentifier: "SectionHeaderView", for: indexPath) as? SectionHeaderView else { break }
+            header.delegate = self
+            return header
+            
+        case UICollectionView.elementKindSectionFooter:
+            return collectionView.dequeueReusableSupplementaryView(ofKind: kind, withReuseIdentifier: "SectionFooterView", for: indexPath)
+            
+        default:
+            return .init()
+        }
+        
+        return .init()
     }
     
     func collectionView(_ collectionView: UICollectionView, cellForItemAt indexPath: IndexPath) -> UICollectionViewCell {
@@ -145,97 +182,37 @@ extension ViewController: UICollectionViewDelegate, UICollectionViewDataSource {
     }
 }
 
-final class ViewModel {
-    let numberOfSection = 2
-    func numberOfItems(in section: Int) -> Int {
-        return section == 0 ? 6 : items.count
-    }
-    
-    var items: [String] = ["A","B","C","D","E","F","G","H","I","J","K","L","M","N","O","P","Q","R","S","T","U","V","W","X","Y","Z"]
-    var selectedItems: [String] = []
-    let maxSize = 6
-    
-    func title(at indexPath: IndexPath) -> String {
-        if indexPath.section == 0 {
-            return indexPath.row < selectedItems.count ? selectedItems[indexPath.row] : ""
-        } else {
-            return items[indexPath.row]
-        }
-    }
-    
-    func order(at indexPath: IndexPath) -> Int? {
-        let order: Int? = {
-            switch indexPath.section {
-            case 1: return selectedItems.enumerated().filter { $0.element == items[indexPath.row] }.first?.offset
-            default: return nil
-            }
-        }()
-        return order
-    }
-    
-    func updateStackState(at indexPath: IndexPath) {
-        let item = items[indexPath.row]
-        let selectedIndex = selectedItems.enumerated().filter { $0.element == item }.first?.offset ?? 0
-        selectedItems.contains(item)
-            ? selectedItems.removeSubrange(selectedIndex...selectedIndex)
-            : selectedItems.append(item)
-    }
-    
-    func isSelectable(at indexPath: IndexPath) -> Bool {
-        return maxSize > selectedItems.count || selectedItems.contains(items[indexPath.row])
-    }
+protocol SectionHeaderViewDelegate: class {
+    func headerViewHide()
+    func headerViewShow()
+    func headerViewClear()
 }
 
 final class SectionHeaderView: UICollectionReusableView {
-    static let id = "SectionHeaderView"
-}
-
-final class AlphabetCollectionViewCell: UICollectionViewCell {
-    static let id = "AlphabetCollectionViewCell"
+    @IBOutlet weak var hideLabel: UILabel!
+    @IBOutlet weak var showLabel: UILabel!
+    @IBOutlet weak var clearLabel: UILabel!
     
-    private let titleLabel = UILabel(frame: .zero)
-    private let orderLabel = UILabel(frame: .zero)
+    weak var delegate: SectionHeaderViewDelegate?
     
-    override init(frame: CGRect) {
-        super.init(frame: frame)
-        setupView()
-    }
-    required init?(coder aDecoder: NSCoder) {
-        fatalError("init(coder:) has not been implemented")
-    }
-    
-    private func setupView() {
-        backgroundColor = .white
-        titleLabel.textAlignment = .center
-        orderLabel.textAlignment = .center
-        orderLabel.isHidden = true
-        orderLabel.clipsToBounds = true
-        orderLabel.backgroundColor = .black
-        orderLabel.textColor = .white
+    override func awakeFromNib() {
+        super.awakeFromNib()
         
-        contentView.addSubview(titleLabel)
-        contentView.addSubview(orderLabel)
-        
-        titleLabel.snp.makeConstraints { $0.edges.equalToSuperview() }
-        orderLabel.snp.makeConstraints { (make) in
-            make.width.height.equalTo(24)
-            make.top.trailing.equalToSuperview().inset(2)
-        }
+        let tapHide = UITapGestureRecognizer(target: self, action: #selector(didTapHide))
+        let tapShow = UITapGestureRecognizer(target: self, action: #selector(didTapShow))
+        let tapClear = UITapGestureRecognizer(target: self, action: #selector(didTapClear))
+        hideLabel.addGestureRecognizer(tapHide)
+        showLabel.addGestureRecognizer(tapShow)
+        clearLabel.addGestureRecognizer(tapClear)
     }
     
-    override func layoutSubviews() {
-        super.layoutSubviews()
-        orderLabel.layer.cornerRadius = 12
+    @objc private func didTapHide() {
+        delegate?.headerViewHide()
     }
-    
-    func configure(_ vm: ViewModel) {
-        titleLabel.text = vm.title
-        orderLabel.text = String(1+(vm.order ?? 0))
-        orderLabel.isHidden = vm.order == nil
+    @objc private func didTapShow() {
+        delegate?.headerViewShow()
     }
-
-    struct ViewModel {
-        var title: String
-        var order: Int?
+    @objc private func didTapClear() {
+        delegate?.headerViewClear()
     }
 }
